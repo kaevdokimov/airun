@@ -125,7 +125,7 @@ async function parseApiError(response: Response, fallback: string) {
                   (part: unknown): part is string | number =>
                     typeof part === "string" || typeof part === "number",
                 )
-                .join(". ")
+                .join(".")
             : "";
           return location ? `${location}: ${item.msg}` : item.msg;
         })

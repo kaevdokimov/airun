@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from starlette.testclient import TestClient
 
-BOT_SECRET = "test-bot-secret-32-characters-min!"
+from tests.helpers import BOT_SECRET
+
 JWT_SECRET = "test-jwt-secret-32-characters-min!!"
-TELEGRAM_ID = 12345
 
 
 @compiles(JSONB, "sqlite")
@@ -91,10 +91,3 @@ def client(auth_env, db_engine):
         yield test_client
 
     app.dependency_overrides.clear()
-
-
-def bot_headers(telegram_id: int = TELEGRAM_ID) -> dict[str, str]:
-    return {
-        "X-Internal-Bot-Secret": BOT_SECRET,
-        "X-Bot-Telegram-Id": str(telegram_id),
-    }

@@ -7,15 +7,7 @@ from sqlalchemy import select
 from starlette.testclient import TestClient
 
 from app.models import Recommendation, User
-
-TELEGRAM_ID = 12345
-
-
-def bot_headers(telegram_id: int = TELEGRAM_ID) -> dict[str, str]:
-    return {
-        "X-Internal-Bot-Secret": "test-bot-secret-32-characters-min!",
-        "X-Bot-Telegram-Id": str(telegram_id),
-    }
+from tests.helpers import TELEGRAM_ID, bot_headers
 
 
 def _upsert_user(client: TestClient) -> str:

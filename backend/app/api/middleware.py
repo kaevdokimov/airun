@@ -17,12 +17,12 @@ def get_request_id() -> str | None:
     return request_id_var.get()
 
 
-class RequestIdFilter(logging.Filter):
-    """Expose the request ID to formatters without changing individual log calls."""
+class RequestIdFormatter(logging.Formatter):
+    """Inject request_id into every record so format strings never KeyError."""
 
-    def filter(self, record: logging.LogRecord) -> bool:
+    def format(self, record: logging.LogRecord) -> str:
         record.request_id = get_request_id() or "-"
-        return True
+        return super().format(record)
 
 
 async def request_id_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
@@ -30,7 +30,7 @@ async def request_id_middleware(request: Request, call_next: Callable[[Request],
     token = request_id_var.set(request_id)
     try:
         response = await call_next(request)
+        response.headers[REQUEST_ID_HEADER] = request_id
+        return response
     finally:
         request_id_var.reset(token)
-    response.headers[REQUEST_ID_HEADER] = request_id
-    return response
