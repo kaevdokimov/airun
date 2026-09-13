@@ -9,6 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
+from app.api.middleware import request_id_middleware
 from app.api.v1.router import router
 from app.config import get_settings
 from app.database import engine
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 
     app = FastAPI(title="AIRun API", version="0.1.0", lifespan=lifespan)
+    app.middleware("http")(request_id_middleware)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)

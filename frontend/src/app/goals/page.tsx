@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ErrorState } from "@/components/ErrorState";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { fetchGoals, getTelegramId, type Goal } from "@/lib/api";
 
 const DISTANCE_LABELS: Record<string, string> = {
@@ -20,19 +22,37 @@ function formatTime(seconds: number | null) {
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
+  const loadGoals = async () => {
     if (!getTelegramId() || !localStorage.getItem("access_token")) {
       window.location.href = "/";
       return;
     }
-    fetchGoals().then(setGoals);
+    try {
+      setLoading(true);
+      setError("");
+      setGoals(await fetchGoals());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось загрузить цели");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadGoals();
   }, []);
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Мои цели</h1>
-      {goals.length === 0 ? (
+      {loading ? (
+        <LoadingSpinner label="Загружаем цели" />
+      ) : error ? (
+        <ErrorState message={error} onRetry={loadGoals} />
+      ) : goals.length === 0 ? (
         <p className="text-gray-500">Нет целей. Создайте цель через Telegram-бот.</p>
       ) : (
         <div className="space-y-4">

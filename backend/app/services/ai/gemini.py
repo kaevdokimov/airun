@@ -7,7 +7,7 @@ from google.genai import types
 from app.config import get_settings
 from app.schemas import RecommendationContent
 from app.services.ai.base import LLMProvider
-from app.services.ai.common import COACH_SYSTEM_INSTRUCTION, parse_recommendation_response
+from app.services.ai.common import COACH_SYSTEM_INSTRUCTION, generate_recommendation_with_json_retry
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,9 @@ class GeminiProvider(LLMProvider):
         self.model = "gemini-2.0-flash"
 
     async def generate_recommendation(self, prompt: str) -> RecommendationContent:
+        return await generate_recommendation_with_json_retry(prompt, self._request_text)
+
+    async def _request_text(self, prompt: str) -> str:
         def _generate() -> str:
             response = self.client.models.generate_content(
                 model=self.model,
@@ -31,5 +34,4 @@ class GeminiProvider(LLMProvider):
             )
             return response.text or ""
 
-        text = await asyncio.to_thread(_generate)
-        return parse_recommendation_response(text)
+        return await asyncio.to_thread(_generate)

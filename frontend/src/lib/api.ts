@@ -39,6 +39,8 @@ export interface WeekStats {
 
 const TOKEN_KEY = "access_token";
 const TELEGRAM_ID_KEY = "telegram_id";
+const AUTH_EXPIRED_EVENT = "airun:auth-expired";
+let authRedirectScheduled = false;
 
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -61,6 +63,20 @@ export function clearAuth() {
   localStorage.removeItem(TELEGRAM_ID_KEY);
 }
 
+function notifySessionExpired() {
+  if (typeof window === "undefined" || authRedirectScheduled) return;
+  authRedirectScheduled = true;
+  clearAuth();
+  window.dispatchEvent(
+    new CustomEvent(AUTH_EXPIRED_EVENT, {
+      detail: "Сессия истекла. Сейчас вернём вас на вход.",
+    }),
+  );
+  window.setTimeout(() => {
+    window.location.href = "/";
+  }, 1400);
+}
+
 function authHeaders(): HeadersInit {
   const token = getAccessToken();
   const headers: HeadersInit = { "Content-Type": "application/json" };
@@ -75,11 +91,20 @@ async function apiFetch(path: string, options: RequestInit = {}) {
   const url = `${API_URL}${path}${separator}telegram_id=${id}`;
   const r = await fetch(url, { ...options, headers: { ...authHeaders(), ...options.headers } });
   if (r.status === 401) {
-    clearAuth();
-    window.location.href = "/";
+    notifySessionExpired();
     throw new Error("Session expired");
   }
   return r;
+}
+
+async function parseApiError(response: Response, fallback: string) {
+  try {
+    const data = await response.json();
+    if (typeof data?.detail === "string") return data.detail;
+  } catch {
+    // Keep the original user-facing fallback when the API returns non-JSON.
+  }
+  return fallback;
 }
 
 export async function loginWithTelegram(authData: Record<string, string | number>) {
@@ -96,18 +121,20 @@ export async function loginWithTelegram(authData: Record<string, string | number
 
 export async function fetchGoals(): Promise<Goal[]> {
   const r = await apiFetch("/api/v1/goals");
-  if (!r.ok) return [];
+  if (!r.ok) throw new Error(await parseApiError(r, "Не удалось загрузить цели"));
   return r.json();
 }
 
 export async function fetchWeekStats(): Promise<WeekStats | null> {
   const r = await apiFetch("/api/v1/stats/week");
-  if (!r.ok) return null;
+  if (!r.ok) throw new Error(await parseApiError(r, "Не удалось загрузить статистику"));
   return r.json();
 }
 
 export async function fetchRecommendations(): Promise<Recommendation[]> {
   const r = await apiFetch("/api/v1/recommendations?limit=10");
-  if (!r.ok) return [];
+  if (!r.ok) throw new Error(await parseApiError(r, "Не удалось загрузить рекомендации"));
   return r.json();
 }
+
+export { AUTH_EXPIRED_EVENT };

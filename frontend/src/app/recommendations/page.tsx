@@ -1,23 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ErrorState } from "@/components/ErrorState";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { fetchRecommendations, getTelegramId, type Recommendation } from "@/lib/api";
 
 export default function RecommendationsPage() {
   const [recs, setRecs] = useState<Recommendation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
+  const loadRecommendations = async () => {
     if (!getTelegramId() || !localStorage.getItem("access_token")) {
       window.location.href = "/";
       return;
     }
-    fetchRecommendations().then(setRecs);
+    try {
+      setLoading(true);
+      setError("");
+      setRecs(await fetchRecommendations());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось загрузить рекомендации");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRecommendations();
   }, []);
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">AI-рекомендации</h1>
-      {recs.length === 0 ? (
+      {loading ? (
+        <LoadingSpinner label="Загружаем рекомендации" />
+      ) : error ? (
+        <ErrorState message={error} onRetry={loadRecommendations} />
+      ) : recs.length === 0 ? (
         <p className="text-gray-500">Пока нет рекомендаций. Создайте цель и подключите Garmin.</p>
       ) : (
         <div className="space-y-6">

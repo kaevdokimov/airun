@@ -10,21 +10,45 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { ErrorState } from "@/components/ErrorState";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { fetchWeekStats, getTelegramId, type WeekStats } from "@/lib/api";
 
 export default function StatsPage() {
   const [stats, setStats] = useState<WeekStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
+  const loadStats = async () => {
     if (!getTelegramId() || !localStorage.getItem("access_token")) {
       window.location.href = "/";
       return;
     }
-    fetchWeekStats().then(setStats);
+    try {
+      setLoading(true);
+      setError("");
+      setStats(await fetchWeekStats());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось загрузить статистику");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStats();
   }, []);
 
+  if (loading) {
+    return <LoadingSpinner label="Загружаем статистику" />;
+  }
+
+  if (error) {
+    return <ErrorState message={error} onRetry={loadStats} />;
+  }
+
   if (!stats) {
-    return <p className="text-gray-500">Загрузка...</p>;
+    return <p className="text-gray-500">За неделю пока нет данных.</p>;
   }
 
   const chartData = stats.activities

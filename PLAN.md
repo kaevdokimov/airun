@@ -38,58 +38,61 @@
 
 ---
 
-## P2 — Архитектура (после зелёного smoke + базовых тестов)
+## P2 — Архитектура (после зелёного smoke + базовых тестов) ✅
 
-### 6. Разбить монолитный `router.py`
+### 6. Разбить монолитный `router.py` ✅
 **Файл**: `backend/app/api/v1/router.py` (~391 строка)
 **Решение**: подроутеры `auth`, `garmin`, `goals`, `stats`, `recommendations`, `health` + сборка в `__init__.py` / `router.py`.
-**Обязательно**: прогон тестов после split.
+**Сделано**: подроутеры вынесены в `backend/app/api/v1/routes/`; `router.py` теперь агрегирует доменные роутеры.
+**Проверка**: `cd backend && .venv/bin/pytest` — зелёный.
 **Трудоёмкость**: ~1–1.5 ч
 
-### 7. Разбить `models/__init__.py` и `schemas/__init__.py`
+### 7. Разбить `models/__init__.py` и `schemas/__init__.py` ✅
 **Решение**: по доменам (`user`, `goal`, `garmin`, `activity`, `recommendation`, …); `__init__.py` реэкспортирует для совместимости (alembic, импорты).
-**Осторожно**: relationships / circular imports между моделями — заложить буфер времени.
+**Сделано**: модели и схемы разнесены по доменным модулям; `__init__.py` оставлены как совместимые реэкспорты.
+**Проверка**: `cd backend && .venv/bin/pytest`; `cd backend && .venv/bin/ruff check app/api app/models app/schemas app/services/ai`.
 **Трудоёмкость**: ~2–3 ч
 
 ---
 
-## P3 — Улучшения продукта / UX
+## P3 — Улучшения продукта / UX ✅
 
-### 8. Frontend: error states + retry
+### 8. Frontend: error states + retry ✅
 **Файлы**: `frontend/src/app/**/page.tsx`
 **Проблема**: при ошибке API — пусто / null.
-**Решение**: понятное сообщение + кнопка повтора (важнее спиннера).
+**Сделано**: страницы целей, статистики и рекомендаций показывают понятное сообщение и кнопку повтора.
 **Трудоёмкость**: ~30–40 мин
 
-### 9. Мягкий redirect при 401
+### 9. Мягкий redirect при 401 ✅
 **Файл**: `frontend/src/lib/api.ts`
-**Решение**: toast / уведомление, затем редирект с короткой задержкой (не мгновенная потеря контекста).
+**Сделано**: сессия очищается, показывается уведомление, редирект на вход происходит с короткой задержкой.
 **Трудоёмкость**: ~15 мин
 
-### 10. Loading UI
-**Решение**: общий `LoadingSpinner` вместо сырого «Загрузка...» — polish, после error states.
+### 10. Loading UI ✅
+**Сделано**: добавлен общий `LoadingSpinner` и подключён на страницах данных.
 **Трудоёмкость**: ~20 мин
 
-### 11. Request ID middleware
+### 11. Request ID middleware ✅
 **Файл**: `backend/app/api/middleware.py` (новый)
-**Решение**: `X-Request-ID` (из заголовка или generate) → contextvars / логи.
+**Сделано**: `X-Request-ID` берётся из заголовка или генерируется, кладётся в `contextvars` и возвращается в ответе.
 **Трудоёмкость**: ~20–30 мин
 
-### 12. Валидация Garmin credentials на входе
+### 12. Валидация Garmin credentials на входе ✅
 **Файл**: схемы / `connect` flow
-**Решение**: Pydantic — формат email, min length password — до вызова Garmin API.
+**Сделано**: `GarminConnectRequest` валидирует формат email и минимальную длину пароля до вызова Garmin API.
 **Трудоёмкость**: ~10–15 мин
 
-### 13. Retry при невалидном JSON от LLM
+### 13. Retry при невалидном JSON от LLM ✅
 **Файл**: `backend/app/services/ai/common.py`
-**Решение**: 1–2 повторных запроса с просьбой исправить JSON; затем fallback.
+**Сделано**: общий helper делает до 3 попыток и просит LLM вернуть валидный JSON; затем использует fallback.
 **Трудоёмкость**: ~20–30 мин
 
-### 14. GeminiProvider — async SDK (низкий приоритет)
+### 14. GeminiProvider — async SDK (низкий приоритет) ⏭️
 **Файл**: `backend/app/services/ai/gemini.py`
 **Проблема**: sync `genai.Client` + `asyncio.to_thread()`.
 **Решение**: актуальный async API `google-genai` (проверить docs; не `Clinet`).
 **Когда**: только если Gemini реально используется; основной путь — Groq/OpenRouter/Ollama.
+**Статус**: оставлено по условию плана; GeminiProvider подключён к общему JSON retry, но sync SDK не менялся без подтверждённой необходимости Gemini.
 **Трудоёмкость**: ~20–40 мин
 
 ---

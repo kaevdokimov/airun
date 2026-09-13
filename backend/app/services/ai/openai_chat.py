@@ -4,7 +4,7 @@ import httpx
 
 from app.schemas import RecommendationContent
 from app.services.ai.base import LLMProvider
-from app.services.ai.common import COACH_SYSTEM_INSTRUCTION, parse_recommendation_response
+from app.services.ai.common import COACH_SYSTEM_INSTRUCTION, generate_recommendation_with_json_retry
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,9 @@ class OpenAIChatProvider(LLMProvider):
         self.timeout = timeout
 
     async def generate_recommendation(self, prompt: str) -> RecommendationContent:
+        return await generate_recommendation_with_json_retry(prompt, self._request_text)
+
+    async def _request_text(self, prompt: str) -> str:
         headers = {"Content-Type": "application/json", **self.extra_headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -53,5 +56,4 @@ class OpenAIChatProvider(LLMProvider):
             response.raise_for_status()
             data = response.json()
 
-        text = data["choices"][0]["message"]["content"] or ""
-        return parse_recommendation_response(text)
+        return data["choices"][0]["message"]["content"] or ""
