@@ -78,9 +78,10 @@ def create_app() -> FastAPI:
                 await conn.execute(text("SELECT 1"))
             return {"status": "ready", "database": "ok"}
         except Exception as exc:
+            logger.exception("Readiness database check failed: %s", exc)
             return JSONResponse(
                 status_code=503,
-                content={"status": "not_ready", "database": str(exc)},
+                content={"status": "not_ready", "database": "unavailable"},
             )
 
     return app
