@@ -1,0 +1,14 @@
+[project]
+name = "airun-bot"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "aiogram>=3.15.0",
+    "httpx>=0.28.0",
+    "redis>=5.2.0",
+    "pydantic-settings>=2.6.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0.0"]
+build-backend = "setuptools.build_meta"

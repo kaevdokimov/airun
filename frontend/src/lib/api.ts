@@ -1,0 +1,113 @@
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export interface Goal {
+  id: string;
+  distance: string;
+  target_time_seconds: number | null;
+  race_date: string;
+  status: string;
+  days_until_race: number;
+}
+
+export interface Activity {
+  id: string;
+  activity_type: string;
+  distance_m: number | null;
+  duration_sec: number | null;
+  started_at: string;
+}
+
+export interface Recommendation {
+  id: string;
+  content: string;
+  parsed?: {
+    summary: string;
+    today_recommendation: string;
+    week_plan: string[];
+    warnings: string[];
+    progress_to_goal: string;
+  };
+  generated_at: string;
+}
+
+export interface WeekStats {
+  total_distance_m: number;
+  total_duration_sec: number;
+  activity_count: number;
+  activities: Activity[];
+}
+
+const TOKEN_KEY = "access_token";
+const TELEGRAM_ID_KEY = "telegram_id";
+
+function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getTelegramId(): number | null {
+  if (typeof window === "undefined") return null;
+  const stored = localStorage.getItem(TELEGRAM_ID_KEY);
+  return stored ? parseInt(stored, 10) : null;
+}
+
+export function setAuth(token: string, telegramId: number) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(TELEGRAM_ID_KEY, String(telegramId));
+}
+
+export function clearAuth() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TELEGRAM_ID_KEY);
+}
+
+function authHeaders(): HeadersInit {
+  const token = getAccessToken();
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+async function apiFetch(path: string, options: RequestInit = {}) {
+  const id = getTelegramId();
+  if (!id) throw new Error("Not authenticated");
+  const separator = path.includes("?") ? "&" : "?";
+  const url = `${API_URL}${path}${separator}telegram_id=${id}`;
+  const r = await fetch(url, { ...options, headers: { ...authHeaders(), ...options.headers } });
+  if (r.status === 401) {
+    clearAuth();
+    window.location.href = "/";
+    throw new Error("Session expired");
+  }
+  return r;
+}
+
+export async function loginWithTelegram(authData: Record<string, string | number>) {
+  const r = await fetch(`${API_URL}/api/v1/auth/telegram-web`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(authData),
+  });
+  if (!r.ok) throw new Error("Telegram auth failed");
+  const data = await r.json();
+  setAuth(data.access_token, data.telegram_id);
+  return data;
+}
+
+export async function fetchGoals(): Promise<Goal[]> {
+  const r = await apiFetch("/api/v1/goals");
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function fetchWeekStats(): Promise<WeekStats | null> {
+  const r = await apiFetch("/api/v1/stats/week");
+  if (!r.ok) return null;
+  return r.json();
+}
+
+export async function fetchRecommendations(): Promise<Recommendation[]> {
+  const r = await apiFetch("/api/v1/recommendations?limit=10");
+  if (!r.ok) return [];
+  return r.json();
+}

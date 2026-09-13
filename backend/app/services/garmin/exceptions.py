@@ -1,0 +1,2 @@
+class MFARequiredError(Exception):
+    pass
