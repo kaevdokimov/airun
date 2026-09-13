@@ -6,61 +6,35 @@
 
 ---
 
-## P0 — Реальные риски сборки / деплоя
+## P0 — Реальные риски сборки / деплоя ✅
 
-### 1. Dockerfile бота: зависимости не из pyproject.toml
-**Файл**: `bot/Dockerfile:6`, `bot/pyproject.toml`
-**Проблема**: hardcoded `pip install aiogram httpx redis pydantic-settings` — drift с `pyproject.toml` при добавлении пакетов.
-**Важно**: простой `pip install -e .` сейчас, скорее всего, упадёт — в `bot/pyproject.toml` нет packaging-конфига (`[tool.setuptools.packages.find]` / package layout), в отличие от backend.
-**Решение**:
-  1. Добавить в `bot/pyproject.toml` setuptools package config (или явный список модулей).
-  2. В Dockerfile: `COPY pyproject.toml .` (+ при необходимости исходники) → `RUN pip install --no-cache-dir .` (или `-e .` после полного `COPY`).
-  3. Сверить с паттерном `backend/Dockerfile` (там тоже `pip install -e .` до полного `COPY` — проверить, что editable install реально подхватывает пакет).
-**Трудоёмкость**: ~20–30 мин
+### 1. Dockerfile бота: зависимости не из pyproject.toml ✅
+**Сделано**: packaging (`py-modules`) в `bot/pyproject.toml`; Dockerfile ставит пакет через `pip install .` после копирования модулей.
+**Также**: `backend/Dockerfile` копирует `app/` до `pip install .` (раньше `-e .` шёл до исходников).
 
-### 2. Добавить `.dockerignore`
-**Файлы**: отсутствуют в `backend/`, `bot/`, `frontend/`
-**Проблема**: в контекст билда могут попасть `.venv`, `__pycache__`, `.env`, `.next`, тесты/кэш.
-**Решение**: `.dockerignore` на каждый сервис (минимум: `.venv`, `__pycache__`, `.env*`, `.git`, `*.pyc`, `node_modules`, `.next`).
-**Трудоёмкость**: ~10 мин
+### 2. Добавить `.dockerignore` ✅
+**Сделано**: `backend/.dockerignore`, `bot/.dockerignore`, `frontend/.dockerignore`.
 
 ---
 
-## P1 — Надёжность (делать до крупного рефакторинга)
+## P1 — Надёжность (делать до крупного рефакторинга) ✅
 
-### 3. Прогнать и закрепить существующие тесты как smoke
-**Файлы**: `backend/tests/test_api_auth.py`, `test_security.py`, `test_llm_factory.py`
-**Проблема**: рефакторинг router/models без зелёного smoke — высокий риск регрессий.
-**Решение**: убедиться, что тесты стабильно проходят в CI/локально; после каждого шага P2 — прогон.
-**Трудоёмкость**: ~15–30 мин
+### 3. Прогнать и закрепить существующие тесты как smoke ✅
+**Сделано**: `pytest` — зелёный smoke (`test_api_auth`, `test_security`, `test_llm_factory`).
+**Прогон**: `cd backend && .venv/bin/pytest`
 
-### 4. Тесты RecommendationService + Goal CRUD
-**Подход**:
-  - RecommendationService: мок LLMProvider — генерация, cooldown, пустые данные
-  - Goal CRUD: API-тесты с БД (транзакция / rollback)
-**Зачем сейчас**: покрытие перед split `router.py` / models.
-**Трудоёмкость**: ~1.5–2 ч
+### 4. Тесты RecommendationService + Goal CRUD ✅
+**Сделано**:
+  - `tests/test_recommendation_service.py` — мок LLM: генерация, cooldown, пустые goals, `force`
+  - `tests/test_goals_crud.py` — API CRUD на in-memory SQLite (+ past date / 404)
+  - `tests/conftest.py` — общий client с override `get_db`
+**Dev-зависимости**: `aiosqlite`, `[tool.pytest.ini_options]`
 
-### 5. Мелкие правки без «архитектуры»
-**5a. `format_recommendation` в `bot/main.py`**
-  - Диагноз «циклическая зависимость» — **ложный**: `main` уже импортирует `from handlers import router`.
-  - Решение: импорт наверх файла (`from handlers import router, format_recommendation`). Отдельный util-модуль — только если появится реальный цикл.
-  - ~5 мин
-
-**5b. Healthcheck `__import__("sqlalchemy")`**
-  - Файл: `backend/app/main.py`
-  - Решение: `from sqlalchemy import text` наверху.
-  - ~2 мин
-
-**5c. Вынести `APIClientMiddleware` из `main()`**
-  - Файл: `bot/main.py` → `bot/middleware.py`
-  - Делать, если нужны юнит-тесты middleware; иначе P3.
-  - ~10 мин
-
-**5d. sync `import redis` в `tasks.py`**
-  - Часто намеренный lazy import для воркера — **не баг**.
-  - Переносить наверх только если мешает единообразию; иначе оставить.
-  - ~2 мин (если трогать)
+### 5. Мелкие правки без «архитектуры» ✅
+**5a.** ✅ `format_recommendation` импортируется наверху `bot/main.py`
+**5b.** ✅ `from sqlalchemy import text` в `backend/app/main.py`
+**5c.** ✅ `APIClientMiddleware` вынесен в `bot/middleware.py`
+**5d.** ⏭️ sync `import redis` в `tasks.py` оставлен lazy by design
 
 ---
 
@@ -150,6 +124,7 @@
   - ротация секрета, отдельный bot identity, аудит логов доступа;
   - не светить postgres default password за пределы local compose;
   - review MFA pending payload в Redis (TTL, scope).
+**Известный gap (не закрыт в P0)**: `.env.example` с `localhost` для Postgres/Redis/API ломает `docker compose` без override хостов сервисов — поправить при работе над compose/README.
 **Трудоёмкость**: оценка отдельно после threat-model / нужд production.
 
 ---
@@ -157,16 +132,16 @@
 ## Порядок выполнения (рекомендуемый)
 
 ```
-Фаза 1 — Сборка (P0)
+Фаза 1 — Сборка (P0) ✅
   └→ 1. bot Dockerfile + packaging
-  └→ 2. .dockerignore (+ проверка backend Dockerfile install)
+  └→ 2. .dockerignore (+ backend Dockerfile install)
 
-Фаза 2 — Страховка (P1)
+Фаза 2 — Страховка (P1) ✅
   └→ 3. smoke существующих тестов
   └→ 4. RecommendationService + Goal CRUD
-  └→ 5. мелкие правки (5a–5b обязательно; 5c–5d по желанию)
+  └→ 5. мелкие правки (5a–5c; 5d оставлен lazy)
 
-Фаза 3 — Архитектура (P2)
+Фаза 3 — Архитектура (P2) ← следующее
   └→ 6. split router → прогон тестов
   └→ 7. split models/schemas → прогон тестов
 
@@ -178,22 +153,22 @@
 Фаза 5 — По необходимости (P4)
   └→ 15 LLM cache (только с безопасным ключом)
   └→ 16 доп. тесты
-  └→ 18 security follow-up для production
+  └→ 18 security follow-up / compose hostnames для production
 ```
 
 ---
 
 ## Оценка времени
 
-| Фаза | Часы (реалистично) |
-|---|---|
-| P0 | ~0.5 |
-| P1 | ~2–2.5 |
-| P2 | ~3–4.5 |
-| P3 | ~2–2.5 |
-| P4 | ~4–7 (выборочно) |
-| **MVP плана (P0–P3 без Gemini/кэша)** | **~8–10 ч** |
-| **С выбранным P4** | **~12–17 ч** |
+| Фаза | Часы (реалистично) | Статус |
+|---|---|---|
+| P0 | ~0.5 | ✅ |
+| P1 | ~2–2.5 | ✅ |
+| P2 | ~3–4.5 | открыто |
+| P3 | ~2–2.5 | открыто |
+| P4 | ~4–7 (выборочно) | открыто |
+| **Осталось (P2–P3)** | **~5–7 ч** | |
+| **С выбранным P4** | **~9–14 ч** | |
 
 ---
 

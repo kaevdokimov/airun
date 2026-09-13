@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy import text
 
 from app.api.v1.router import router
 from app.config import get_settings
@@ -66,7 +67,7 @@ def create_app() -> FastAPI:
     async def ready(request: Request):
         try:
             async with engine.connect() as conn:
-                await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+                await conn.execute(text("SELECT 1"))
             return {"status": "ready", "database": "ok"}
         except Exception as exc:
             return JSONResponse(

@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import os
 
 import redis.asyncio as aioredis
 from aiogram import Bot, Dispatcher
@@ -9,7 +8,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from api_client import APIClient
-from handlers import router
+from handlers import format_recommendation, router
+from middleware import APIClientMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,8 +41,6 @@ async def notification_listener(bot: Bot, api: APIClient, redis_url: str):
             if event == "morning_digest":
                 rec = await api.latest_recommendation(telegram_id)
                 if rec:
-                    from handlers import format_recommendation
-
                     await bot.send_message(
                         telegram_id,
                         f"🌅 *Утренние рекомендации*\n\n{format_recommendation(rec)}",
@@ -66,22 +64,6 @@ async def main():
     bot = Bot(token=settings.telegram_bot_token)
     dp = Dispatcher(storage=MemoryStorage())
     api = APIClient(settings.api_base_url, settings.internal_bot_secret)
-
-    from aiogram import BaseMiddleware
-    from typing import Any, Awaitable, Callable
-
-    class APIClientMiddleware(BaseMiddleware):
-        def __init__(self, api_client: APIClient):
-            self.api_client = api_client
-
-        async def __call__(
-            self,
-            handler: Callable[[Any, dict], Awaitable[Any]],
-            event: Any,
-            data: dict,
-        ) -> Any:
-            data["api"] = self.api_client
-            return await handler(event, data)
 
     dp.message.middleware(APIClientMiddleware(api))
     dp.callback_query.middleware(APIClientMiddleware(api))
