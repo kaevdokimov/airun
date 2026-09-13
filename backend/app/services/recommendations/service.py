@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.config import get_settings
 from app.models import Activity, DailySummary, Goal, GoalStatus, Recommendation, User
 from app.schemas import RecommendationContent
+from app.services.ai.cache import llm_recommendation_cache
 from app.services.ai.factory import get_llm_provider
 from app.services.ai.prompts import build_recommendation_prompt
 from app.utils.timezone import user_today
@@ -53,18 +54,35 @@ class RecommendationService:
         if not context.get("goals"):
             return None
 
-        llm = get_llm_provider()
         prompt = build_recommendation_prompt(context)
+        context_date = user_today(user.timezone)
+        parsed: RecommendationContent | None = None
+        from_cache = False
 
-        try:
-            parsed = await llm.generate_recommendation(prompt)
-        except Exception as exc:
-            logger.error("LLM generation failed for user %s: %s", user_id, exc)
-            raise
+        # force=True always calls a fresh LLM; cache is only for repeated generate.
+        if not force:
+            parsed = await llm_recommendation_cache.get(user.id, context_date, prompt)
+            from_cache = parsed is not None
+
+        if parsed is None:
+            llm = get_llm_provider()
+            try:
+                parsed = await llm.generate_recommendation(prompt)
+            except Exception as exc:
+                logger.error("LLM generation failed for user %s: %s", user_id, exc)
+                raise
+            await llm_recommendation_cache.set(user.id, context_date, prompt, parsed)
 
         content = parsed.model_dump_json(ensure_ascii=False)
-        primary_goal = next((g for g in user.goals if g.status == GoalStatus.ACTIVE), None)
 
+        if from_cache:
+            latest = await self._latest_recommendation(db, user.id)
+            if latest is not None and latest.content == content:
+                user.last_recommendation_at = datetime.now(timezone.utc)
+                await db.flush()
+                return latest
+
+        primary_goal = next((g for g in user.goals if g.status == GoalStatus.ACTIVE), None)
         recommendation = Recommendation(
             user_id=user.id,
             goal_id=primary_goal.id if primary_goal else None,
@@ -75,6 +93,19 @@ class RecommendationService:
         user.last_recommendation_at = datetime.now(timezone.utc)
         await db.flush()
         return recommendation
+
+    async def _latest_recommendation(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+    ) -> Recommendation | None:
+        result = await db.execute(
+            select(Recommendation)
+            .where(Recommendation.user_id == user_id)
+            .order_by(Recommendation.generated_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def _build_context(self, db: AsyncSession, user: User) -> dict:
         today = user_today(user.timezone)

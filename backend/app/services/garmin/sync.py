@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import Activity, DailySummary, User
+from app.services.ai.cache import llm_recommendation_cache
 from app.services.garmin.unofficial import UnofficialGarminProvider
 from app.services.security import get_credential_encryption
 from app.utils.timezone import user_today
@@ -46,6 +47,7 @@ class GarminSyncService:
         user.last_synced_at = datetime.now(timezone.utc)
         credential.last_error = None
         await db.flush()
+        await llm_recommendation_cache.invalidate_user(user_id)
 
         return {"activities_synced": activities_synced, "summaries_synced": summaries_synced}
 

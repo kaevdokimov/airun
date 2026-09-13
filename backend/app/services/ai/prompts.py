@@ -1,5 +1,8 @@
 import json
 
+# Bump when SYSTEM_PROMPT or context shape changes so cached LLM answers invalidate.
+PROMPT_VERSION = "1"
+
 SYSTEM_PROMPT = """Проанализируй данные тренировок и цели бегуна. Составь персональные рекомендации.
 
 Верни JSON:

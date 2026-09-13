@@ -133,7 +133,18 @@ async def test_generate_creates_recommendation_with_mocked_llm():
     llm = AsyncMock()
     llm.generate_recommendation = AsyncMock(return_value=parsed)
 
-    with patch("app.services.recommendations.service.get_llm_provider", return_value=llm):
+    with (
+        patch("app.services.recommendations.service.get_llm_provider", return_value=llm),
+        patch(
+            "app.services.recommendations.service.llm_recommendation_cache.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.services.recommendations.service.llm_recommendation_cache.set",
+            new_callable=AsyncMock,
+        ),
+    ):
         result = await service.generate(db, user_id, force=True)
 
     assert result is not None
@@ -180,7 +191,18 @@ async def test_generate_force_bypasses_cooldown():
     llm = AsyncMock()
     llm.generate_recommendation = AsyncMock(return_value=parsed)
 
-    with patch("app.services.recommendations.service.get_llm_provider", return_value=llm):
+    with (
+        patch("app.services.recommendations.service.get_llm_provider", return_value=llm),
+        patch(
+            "app.services.recommendations.service.llm_recommendation_cache.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.services.recommendations.service.llm_recommendation_cache.set",
+            new_callable=AsyncMock,
+        ),
+    ):
         result = await service.generate(db, user_id, force=True)
 
     assert result is not None

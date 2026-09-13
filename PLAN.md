@@ -97,23 +97,25 @@
 
 ---
 
-## P4 — Опционально / с оговорками
+## P4 — Опционально / с оговорками ✅ (выбранные пункты)
 
-### 15. Кэширование LLM-ответов — только с безопасным ключом
-**Проблема**: одинаковый промпт ≠ безопасно переиспользовать ответ между пользователями/днями.
-**Решение (если делать)**:
-  - ключ: `user_id` + дата/окно контекста + hash(промпт) + версия промпта;
-  - TTL короткий; явная инвалидация при новом sync Garmin;
-  - без этого пункта **не внедрять** — устаревший совет хуже отсутствия кэша.
+### 15. Кэширование LLM-ответов — только с безопасным ключом ✅
+**Сделано**:
+  - `backend/app/services/ai/cache.py` - Redis cache с ключом `user_id` + дата контекста + hash(промпт) + `PROMPT_VERSION`;
+  - `LLM_CACHE_TTL_SECONDS` (по умолчанию 3900; `0` отключает); effective TTL не ниже `cooldown*3600+300`, чтобы повторный generate после cooldown мог попасть в кэш;
+  - `force=True` всегда свежий LLM (чтение кэша не используется), после генерации кэш обновляется;
+  - на cache hit при совпадении content возвращается latest Recommendation без новой строки и без LLM;
+  - инвалидация пользователя после успешного Garmin sync;
+  - тесты изоляции ключа, force bypass и cache hit в `tests/test_llm_cache.py`.
 **Трудоёмкость**: ~1 ч (с тестами на изоляцию ключа)
 
-### 16. Тесты бота / фронта / rate limit
-| Что | Подход | Оценка |
+### 16. Тесты бота / фронта / rate limit ✅
+| Что | Подход | Статус |
 |---|---|---|
-| Bot handlers | aiogram TestClient / мок API | ~1–1.5 ч |
-| Frontend | jest/rtl — загрузка/ошибки | ~1.5–2 ч |
-| Rate limiting | httpx, достижение лимита | ~20 мин |
-| Garmin sync | мок provider + БД | ~1–1.5 ч |
+| Bot handlers | `bot/tests/test_handlers.py` — format + sync handler с мок API | ✅ |
+| Frontend | vitest + RTL: `LoadingSpinner` / `ErrorState` | ✅ |
+| Rate limiting | `tests/test_rate_limit.py` — `/health` и `/auth/telegram-web` | ✅ |
+| Garmin sync | `tests/test_garmin_sync.py` — мок provider + in-memory БД | ✅ |
 
 ### 17. Отложить или не делать без явной нужды
 - Пустые `__init__.py` во всех подпакетах — почти noop при `PYTHONPATH=/app` / namespace packages.
@@ -153,10 +155,10 @@
   └→ 11 request ID → 12 garmin validation → 13 LLM JSON retry
   └→ 14 Gemini async — выполнен, так как Gemini выбран
 
-Фаза 5 — По необходимости (P4)
-  └→ 15 LLM cache (только с безопасным ключом)
-  └→ 16 доп. тесты
-  └→ 18 security follow-up / compose hostnames для production
+Фаза 5 — По необходимости (P4) ✅ выбранное
+  └→ 15 LLM cache (безопасный ключ + инвалидация на sync)
+  └→ 16 доп. тесты (rate limit, garmin sync, bot, frontend)
+  └→ 18 security follow-up — открыт как отдельный production-трек
 ```
 
 ---
@@ -169,9 +171,9 @@
 | P1 | ~2–2.5 | ✅ |
 | P2 | ~3–4.5 | ✅ |
 | P3 | ~2–2.5 | ✅ |
-| P4 | ~4–7 (выборочно) | открыто |
-| **Осталось (P2–P3)** | **0 ч** | ✅ |
-| **С выбранным P4** | **~4–7 ч** | |
+| P4 | ~4–7 (выборочно) | ✅ 15+16; 18 follow-up |
+| **Осталось по плану** | **0 ч кода** | ✅ |
+| **Открыто вне плана** | security follow-up (п.18) | по нужде production |
 
 ---
 

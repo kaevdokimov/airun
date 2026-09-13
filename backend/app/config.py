@@ -35,6 +35,9 @@ class Settings(BaseSettings):
 
     sync_interval_minutes: int = 15
     recommendation_cooldown_hours: int = 1
+    # 0 disables. Effective TTL is max(this, cooldown_hours*3600 + 300) so repeated
+    # generate after cooldown can reuse the LLM answer when context is unchanged.
+    llm_cache_ttl_seconds: int = 3900
 
     cors_origins: str = "http://localhost:3000"
 

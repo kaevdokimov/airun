@@ -71,7 +71,10 @@ async def db_session(db_engine):
 @pytest.fixture
 def client(auth_env, db_engine):
     from app.database import get_db
+    from app.limiter import limiter
     from app.main import create_app
+
+    limiter._storage.reset()
 
     session_factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
 

@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -27,6 +27,28 @@ if not root_logger.handlers:
 for handler in root_logger.handlers:
     handler.setFormatter(_request_id_formatter)
 logger = logging.getLogger(__name__)
+
+meta_router = APIRouter()
+
+
+@meta_router.get("/health")
+@limiter.limit("60/minute")
+async def health(request: Request):
+    return {"status": "ok", "service": "airun-api"}
+
+
+@meta_router.get("/ready")
+@limiter.limit("60/minute")
+async def ready(request: Request):
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"status": "ready", "database": "ok"}
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": str(exc)},
+        )
 
 
 @asynccontextmanager
@@ -63,6 +85,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(meta_router)
     app.include_router(router)
 
     @app.get("/health")
@@ -83,7 +106,6 @@ def create_app() -> FastAPI:
                 status_code=503,
                 content={"status": "not_ready", "database": "unavailable"},
             )
-
     return app
 
 
