@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import date
-from typing import Any, Callable
+from typing import Callable
 
 from garminconnect import Garmin
 

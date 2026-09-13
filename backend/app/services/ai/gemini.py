@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from google import genai
@@ -22,16 +21,13 @@ class GeminiProvider(LLMProvider):
         return await generate_recommendation_with_json_retry(prompt, self._request_text)
 
     async def _request_text(self, prompt: str) -> str:
-        def _generate() -> str:
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=COACH_SYSTEM_INSTRUCTION,
-                    response_mime_type="application/json",
-                    temperature=0.7,
-                ),
-            )
-            return response.text or ""
-
-        return await asyncio.to_thread(_generate)
+        response = await self.client.aio.models.generate_content(
+            model=self.model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=COACH_SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                temperature=0.7,
+            ),
+        )
+        return response.text or ""

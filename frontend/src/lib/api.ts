@@ -42,6 +42,16 @@ const TELEGRAM_ID_KEY = "telegram_id";
 const AUTH_EXPIRED_EVENT = "airun:auth-expired";
 let authRedirectScheduled = false;
 
+type ApiValidationError = { msg?: unknown; loc?: unknown };
+
+function isApiErrorBody(value: unknown): value is { detail?: unknown } {
+  return typeof value === "object" && value !== null;
+}
+
+function isApiValidationError(value: unknown): value is ApiValidationError {
+  return typeof value === "object" && value !== null;
+}
+
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
@@ -54,19 +64,21 @@ export function getTelegramId(): number | null {
 }
 
 export function setAuth(token: string, telegramId: number) {
+  authRedirectScheduled = false;
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(TELEGRAM_ID_KEY, String(telegramId));
 }
 
 export function clearAuth() {
+  authRedirectScheduled = false;
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(TELEGRAM_ID_KEY);
 }
 
 function notifySessionExpired() {
   if (typeof window === "undefined" || authRedirectScheduled) return;
-  authRedirectScheduled = true;
   clearAuth();
+  authRedirectScheduled = true;
   window.dispatchEvent(
     new CustomEvent(AUTH_EXPIRED_EVENT, {
       detail: "Сессия истекла. Сейчас вернём вас на вход.",
@@ -99,8 +111,27 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 
 async function parseApiError(response: Response, fallback: string) {
   try {
-    const data = await response.json();
-    if (typeof data?.detail === "string") return data.detail;
+    const data: unknown = await response.json();
+    const detail = isApiErrorBody(data) ? data.detail : undefined;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      const messages = detail
+        .filter(isApiValidationError)
+        .map((item: ApiValidationError) => {
+          if (typeof item.msg !== "string") return null;
+          const location = Array.isArray(item.loc)
+            ? item.loc
+                .filter(
+                  (part: unknown): part is string | number =>
+                    typeof part === "string" || typeof part === "number",
+                )
+                .join(". ")
+            : "";
+          return location ? `${location}: ${item.msg}` : item.msg;
+        })
+        .filter((message): message is string => Boolean(message));
+      if (messages.length) return messages.join("; ");
+    }
   } catch {
     // Keep the original user-facing fallback when the API returns non-JSON.
   }

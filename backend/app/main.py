@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
-from app.api.middleware import request_id_middleware
+from app.api.middleware import RequestIdFilter, request_id_middleware
 from app.api.v1.router import router
 from app.config import get_settings
 from app.database import engine
@@ -18,8 +18,10 @@ from app.services.ai.factory import log_llm_startup_status
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    format="%(asctime)s %(levelname)s [request_id=%(request_id)s] [%(name)s] %(message)s",
 )
+for handler in logging.getLogger().handlers:
+    handler.addFilter(RequestIdFilter())
 logger = logging.getLogger(__name__)
 
 

@@ -87,12 +87,12 @@
 **Сделано**: общий helper делает до 3 попыток и просит LLM вернуть валидный JSON; затем использует fallback.
 **Трудоёмкость**: ~20–30 мин
 
-### 14. GeminiProvider — async SDK (низкий приоритет) ⏭️
+### 14. GeminiProvider — async SDK (низкий приоритет) ✅
 **Файл**: `backend/app/services/ai/gemini.py`
 **Проблема**: sync `genai.Client` + `asyncio.to_thread()`.
 **Решение**: актуальный async API `google-genai` (проверить docs; не `Clinet`).
 **Когда**: только если Gemini реально используется; основной путь — Groq/OpenRouter/Ollama.
-**Статус**: оставлено по условию плана; GeminiProvider подключён к общему JSON retry, но sync SDK не менялся без подтверждённой необходимости Gemini.
+**Сделано**: Gemini выбран в текущей конфигурации, поэтому провайдер переведён с `asyncio.to_thread()` на нативный `client.aio.models.generate_content()`; добавлен unit-тест.
 **Трудоёмкость**: ~20–40 мин
 
 ---
@@ -127,7 +127,7 @@
   - ротация секрета, отдельный bot identity, аудит логов доступа;
   - не светить postgres default password за пределы local compose;
   - review MFA pending payload в Redis (TTL, scope).
-**Известный gap (не закрыт в P0)**: `.env.example` с `localhost` для Postgres/Redis/API ломает `docker compose` без override хостов сервисов — поправить при работе над compose/README.
+**Compose gap закрыт**: `.env.example` сохраняет `localhost` для запуска сервисов с хоста, а `docker-compose.yml` переопределяет адреса Postgres/Redis/API на имена сервисов внутри Docker-сети.
 **Трудоёмкость**: оценка отдельно после threat-model / нужд production.
 
 ---
@@ -144,14 +144,14 @@
   └→ 4. RecommendationService + Goal CRUD
   └→ 5. мелкие правки (5a–5c; 5d оставлен lazy)
 
-Фаза 3 — Архитектура (P2) ← следующее
+Фаза 3 — Архитектура (P2) ✅
   └→ 6. split router → прогон тестов
   └→ 7. split models/schemas → прогон тестов
 
-Фаза 4 — Продукт (P3)
+Фаза 4 — Продукт (P3) ✅
   └→ 8 error states → 9 soft 401 → 10 loading
   └→ 11 request ID → 12 garmin validation → 13 LLM JSON retry
-  └→ 14 Gemini async — только если нужен
+  └→ 14 Gemini async — выполнен, так как Gemini выбран
 
 Фаза 5 — По необходимости (P4)
   └→ 15 LLM cache (только с безопасным ключом)
@@ -167,11 +167,11 @@
 |---|---|---|
 | P0 | ~0.5 | ✅ |
 | P1 | ~2–2.5 | ✅ |
-| P2 | ~3–4.5 | открыто |
-| P3 | ~2–2.5 | открыто |
+| P2 | ~3–4.5 | ✅ |
+| P3 | ~2–2.5 | ✅ |
 | P4 | ~4–7 (выборочно) | открыто |
-| **Осталось (P2–P3)** | **~5–7 ч** | |
-| **С выбранным P4** | **~9–14 ч** | |
+| **Осталось (P2–P3)** | **0 ч** | ✅ |
+| **С выбранным P4** | **~4–7 ч** | |
 
 ---
 

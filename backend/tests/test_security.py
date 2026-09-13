@@ -1,7 +1,7 @@
 import pytest
 from cryptography.fernet import Fernet
 
-from app.api.deps import create_access_token, decode_access_token, verify_telegram_widget_auth
+from app.api.deps import verify_telegram_widget_auth
 
 
 @pytest.fixture

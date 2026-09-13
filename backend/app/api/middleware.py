@@ -1,4 +1,5 @@
 import contextvars
+import logging
 import uuid
 from collections.abc import Awaitable, Callable
 
@@ -14,6 +15,14 @@ request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 
 def get_request_id() -> str | None:
     return request_id_var.get()
+
+
+class RequestIdFilter(logging.Filter):
+    """Expose the request ID to formatters without changing individual log calls."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = get_request_id() or "-"
+        return True
 
 
 async def request_id_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:

@@ -19,7 +19,7 @@ COACH_SYSTEM_INSTRUCTION = """Ты — опытный беговой трене�
 
 JSON_REPAIR_PROMPT = """Предыдущий ответ был невалидным JSON.
 Верни только один валидный JSON-объект без markdown и пояснений строго по схеме:
-{"summary":"","today_recommendation":"","week_plan":[],"warnings":[],"progress_to_goal":""}
+{{"summary":"","today_recommendation":"","week_plan":[],"warnings":[],"progress_to_goal":""}}
 
 Исходный запрос:
 {prompt}
