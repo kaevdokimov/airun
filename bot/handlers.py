@@ -23,6 +23,28 @@ from states import GarminConnectStates, GoalCreateStates
 logger = logging.getLogger(__name__)
 router = Router()
 
+_USER_ERRORS = {
+    "start": "Не удалось начать. Попробуйте снова.",
+    "garmin_connect": "Не удалось подключить Garmin. Проверьте данные и попробуйте снова.",
+    "garmin_mfa": "Не удалось подтвердить код MFA. Начните подключение заново.",
+    "garmin_disconnect": "Не удалось отключить Garmin.",
+    "goals": "Не удалось загрузить цели.",
+    "goal_create": "Не удалось создать цель.",
+    "goal_delete": "Не удалось удалить цель.",
+    "stats": "Не удалось загрузить статистику.",
+    "recommendations": "Не удалось загрузить рекомендации.",
+    "recommendation_refresh": "Не удалось обновить рекомендации.",
+    "sync": "Не удалось синхронизировать данные Garmin.",
+}
+
+
+def _log_handler_error(action: str, exc: Exception) -> None:
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status is None:
+        logger.error("%s failed: %s", action, type(exc).__name__)
+    else:
+        logger.error("%s failed: %s status=%s", action, type(exc).__name__, status)
+
 
 def format_duration(seconds: int | None) -> str:
     if not seconds:
@@ -52,7 +74,12 @@ def format_recommendation(rec: dict) -> str:
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, api: APIClient):
-    await api.upsert_user(message.from_user.id)
+    try:
+        await api.upsert_user(message.from_user.id)
+    except Exception as exc:
+        _log_handler_error("start", exc)
+        await message.answer(_USER_ERRORS["start"])
+        return
     await message.answer(
         "👋 Добро пожаловать в *AIRun* — ваш AI-тренер для бега!\n\n"
         "Подключите Garmin Connect в настройках, поставьте цель и получайте персональные рекомендации.",
@@ -101,13 +128,20 @@ async def garmin_password(message: Message, state: FSMContext, api: APIClient):
         await state.clear()
         await message.answer(f"✅ {result.get('message', 'Подключено')}", reply_markup=main_menu())
     except Exception as exc:
+        _log_handler_error("garmin_connect", exc)
         await state.clear()
-        await message.answer(f"❌ Ошибка: {exc}", reply_markup=main_menu())
+        await message.answer(_USER_ERRORS["garmin_connect"], reply_markup=main_menu())
 
 
 @router.message(GarminConnectStates.mfa)
 async def garmin_mfa(message: Message, state: FSMContext, api: APIClient):
-    result = await api.garmin_mfa(message.from_user.id, message.text.strip())
+    try:
+        result = await api.garmin_mfa(message.from_user.id, message.text.strip())
+    except Exception as exc:
+        _log_handler_error("garmin_mfa", exc)
+        await state.clear()
+        await message.answer(_USER_ERRORS["garmin_mfa"], reply_markup=main_menu())
+        return
     await state.clear()
     if result.get("status") == "connected":
         await message.answer(f"✅ {result['message']}", reply_markup=main_menu())
@@ -117,13 +151,23 @@ async def garmin_mfa(message: Message, state: FSMContext, api: APIClient):
 
 @router.message(F.text == "❌ Отключить Garmin")
 async def garmin_disconnect(message: Message, api: APIClient):
-    await api.garmin_disconnect(message.from_user.id)
+    try:
+        await api.garmin_disconnect(message.from_user.id)
+    except Exception as exc:
+        _log_handler_error("garmin_disconnect", exc)
+        await message.answer(_USER_ERRORS["garmin_disconnect"], reply_markup=settings_menu())
+        return
     await message.answer("Garmin отключён.", reply_markup=settings_menu())
 
 
 @router.message(F.text == "🎯 Мои цели")
 async def list_goals(message: Message, api: APIClient):
-    goals = await api.list_goals(message.from_user.id)
+    try:
+        goals = await api.list_goals(message.from_user.id)
+    except Exception as exc:
+        _log_handler_error("goals", exc)
+        await message.answer(_USER_ERRORS["goals"])
+        return
     if not goals:
         await message.answer(
             "У вас пока нет целей.",
@@ -189,12 +233,17 @@ async def goal_race_date(message: Message, state: FSMContext, api: APIClient):
         await message.answer("Неверный формат даты. Используйте ДД.ММ.ГГГГ")
         return
     data = await state.get_data()
-    await api.create_goal(
-        message.from_user.id,
-        data["distance"],
-        race_date,
-        data.get("target_time_seconds"),
-    )
+    try:
+        await api.create_goal(
+            message.from_user.id,
+            data["distance"],
+            race_date,
+            data.get("target_time_seconds"),
+        )
+    except Exception as exc:
+        _log_handler_error("goal_create", exc)
+        await message.answer(_USER_ERRORS["goal_create"])
+        return
     await state.clear()
     dist = DISTANCE_LABELS.get(data["distance"], data["distance"])
     await message.answer(f"✅ Цель создана: {dist} — {race_date.strftime('%d.%m.%Y')}", reply_markup=main_menu())
@@ -203,17 +252,26 @@ async def goal_race_date(message: Message, state: FSMContext, api: APIClient):
 @router.callback_query(F.data.startswith("goal_del:"))
 async def goal_delete(callback: CallbackQuery, api: APIClient):
     goal_id = callback.data.split(":")[1]
-    await api.delete_goal(callback.from_user.id, goal_id)
-    goals = await api.list_goals(callback.from_user.id)
-    await callback.message.edit_text("Цель удалена.", reply_markup=goals_list_keyboard(goals))
+    try:
+        await api.delete_goal(callback.from_user.id, goal_id)
+        goals = await api.list_goals(callback.from_user.id)
+        await callback.message.edit_text("Цель удалена.", reply_markup=goals_list_keyboard(goals))
+    except Exception as exc:
+        _log_handler_error("goal_delete", exc)
+        await callback.message.answer(_USER_ERRORS["goal_delete"])
     await callback.answer()
 
 
 @router.message(F.text == "📊 Статистика")
 @router.message(Command("stats"))
 async def stats(message: Message, api: APIClient):
-    today = await api.stats_today(message.from_user.id)
-    week = await api.stats_week(message.from_user.id)
+    try:
+        today = await api.stats_today(message.from_user.id)
+        week = await api.stats_week(message.from_user.id)
+    except Exception as exc:
+        _log_handler_error("stats", exc)
+        await message.answer(_USER_ERRORS["stats"])
+        return
     lines = ["📊 *Статистика*", ""]
     if today and today.get("stats"):
         stats_data = today["stats"]
@@ -233,7 +291,12 @@ async def stats(message: Message, api: APIClient):
 @router.message(F.text == "💡 Рекомендации")
 @router.message(Command("recommendations"))
 async def recommendations(message: Message, api: APIClient):
-    rec = await api.latest_recommendation(message.from_user.id)
+    try:
+        rec = await api.latest_recommendation(message.from_user.id)
+    except Exception as exc:
+        _log_handler_error("recommendations", exc)
+        await message.answer(_USER_ERRORS["recommendations"])
+        return
     if not rec:
         await message.answer(
             "Пока нет рекомендаций. Создайте цель и подключите Garmin.",
@@ -250,7 +313,13 @@ async def recommendations(message: Message, api: APIClient):
 @router.callback_query(F.data == "rec_refresh")
 async def rec_refresh(callback: CallbackQuery, api: APIClient):
     await callback.message.answer("Генерирую рекомендации...")
-    result = await api.generate_recommendation(callback.from_user.id, force=True)
+    try:
+        result = await api.generate_recommendation(callback.from_user.id, force=True)
+    except Exception as exc:
+        _log_handler_error("recommendation_refresh", exc)
+        await callback.message.answer(_USER_ERRORS["recommendation_refresh"])
+        await callback.answer()
+        return
     if result.get("success") and result.get("recommendation"):
         await callback.message.answer(
             format_recommendation(result["recommendation"]),
@@ -266,7 +335,12 @@ async def rec_refresh(callback: CallbackQuery, api: APIClient):
 @router.message(Command("sync"))
 async def sync(message: Message, api: APIClient):
     await message.answer("Синхронизирую данные Garmin...")
-    result = await api.trigger_sync(message.from_user.id)
+    try:
+        result = await api.trigger_sync(message.from_user.id)
+    except Exception as exc:
+        _log_handler_error("sync", exc)
+        await message.answer(_USER_ERRORS["sync"])
+        return
     if result.get("success"):
         await message.answer(
             f"✅ {result['message']}\n"
