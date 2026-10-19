@@ -17,7 +17,18 @@ docker compose up --build
 Сервисы:
 - API: http://localhost:8000/docs
 - Frontend: http://localhost:3000
-- Telegram-бот: основной интерфейс
+- Telegram-бот: основной интерфейс (цели, Garmin, синхронизация, рекомендации)
+- worker и beat: синхронизация Garmin, утренний дайджест, напоминания о старте
+
+Проверки локально, если подняты venv и `node_modules`:
+
+```bash
+cd backend && .venv/bin/pytest && .venv/bin/ruff check app tests
+cd bot && .venv/bin/pytest
+cd frontend && npm run lint && npm test
+```
+
+Дальнейшие работы: `PLAN.md` (цикл 2). Дашборд сейчас только показывает цели, статистику и рекомендации. Запись и подключение Garmin идут через бота.
 
 ## Обязательные переменные окружения
 
@@ -73,8 +84,9 @@ OLLAMA_MODEL=llama3.2
 
 ```
 AIRun/
-├── backend/     # FastAPI + Celery
-├── bot/         # Telegram bot (aiogram)
-├── frontend/    # Next.js dashboard
+├── backend/     # FastAPI, Celery worker/beat, Alembic
+├── bot/         # Telegram bot (aiogram), клиент API
+├── frontend/    # Next.js dashboard (JWT, чтение)
+├── PLAN.md      # текущий порядок работ
 └── docker-compose.yml
 ```
