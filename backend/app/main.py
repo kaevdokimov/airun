@@ -1,6 +1,8 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,6 +17,8 @@ from app.config import get_settings
 from app.database import engine
 from app.limiter import limiter
 from app.services.ai.factory import log_llm_startup_status
+
+_READY_TIMEOUT_SECONDS = 2
 
 _LOG_FORMAT = "%(asctime)s %(levelname)s [request_id=%(request_id)s] [%(name)s] %(message)s"
 _request_id_formatter = RequestIdFormatter(_LOG_FORMAT)
@@ -31,6 +35,32 @@ logger = logging.getLogger(__name__)
 meta_router = APIRouter()
 
 
+async def check_database() -> None:
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+
+
+async def check_redis() -> None:
+    client = aioredis.from_url(
+        get_settings().redis_url,
+        socket_connect_timeout=_READY_TIMEOUT_SECONDS,
+        socket_timeout=_READY_TIMEOUT_SECONDS,
+    )
+    try:
+        await client.ping()
+    finally:
+        await client.aclose()
+
+
+async def _component_status(name: str, check) -> str:
+    try:
+        await asyncio.wait_for(check(), timeout=_READY_TIMEOUT_SECONDS)
+    except Exception:
+        logger.exception("Readiness check failed: %s", name)
+        return "unavailable"
+    return "ok"
+
+
 @meta_router.get("/health")
 @limiter.limit("60/minute")
 async def health(request: Request):
@@ -40,16 +70,18 @@ async def health(request: Request):
 @meta_router.get("/ready")
 @limiter.limit("60/minute")
 async def ready(request: Request):
-    try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return {"status": "ready", "database": "ok"}
-    except Exception as exc:
-        logger.exception("Readiness database check failed: %s", exc)
-        return JSONResponse(
-            status_code=503,
-            content={"status": "not_ready", "database": "unavailable"},
-        )
+    database, redis_status = await asyncio.gather(
+        _component_status("database", check_database),
+        _component_status("redis", check_redis),
+    )
+    payload = {
+        "status": "ready" if database == "ok" and redis_status == "ok" else "not_ready",
+        "database": database,
+        "redis": redis_status,
+    }
+    if payload["status"] != "ready":
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 @asynccontextmanager
@@ -88,25 +120,6 @@ def create_app() -> FastAPI:
 
     app.include_router(meta_router)
     app.include_router(router)
-
-    @app.get("/health")
-    @limiter.limit("60/minute")
-    async def health(request: Request):
-        return {"status": "ok", "service": "airun-api"}
-
-    @app.get("/ready")
-    @limiter.limit("60/minute")
-    async def ready(request: Request):
-        try:
-            async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
-            return {"status": "ready", "database": "ok"}
-        except Exception as exc:
-            logger.exception("Readiness database check failed: %s", exc)
-            return JSONResponse(
-                status_code=503,
-                content={"status": "not_ready", "database": "unavailable"},
-            )
     return app
 
 
